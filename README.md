@@ -1,6 +1,5 @@
----
-title: "Peer Graded Assignment: Prediction Assignment Writeup"
----
+## Coursera: Peer Graded Assignment: Prediction Assignment Writeup
+
 
 
 ### Background
