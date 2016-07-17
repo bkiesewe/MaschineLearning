@@ -1,0 +1,137 @@
+---
+title: "Practical Machine Learning Project"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Summary:
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement. A group of 6 young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+
+Class A - Exactly according to the specification  
+Class B - Throwing the elbows to the front  
+Class C - Lifting the dumbbell only halfway  
+Class D - Lowering the dumbbell only halfway   
+Class E - Throwing the hips to the front   
+
+See http://groupware.les.inf.puc-rio.br/har#ixzz4EURcK6Bp for more detailed information.
+
+The training data for this project are available here:  
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv  
+The test data are available here:  
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv  
+
+###Goal:
+
+The goal of the project is to predict the manner in which they did the exercise. The Classe variable is the outcome and of interest is: 
+
+How is the model build?  
+How is cross validation done?  
+What is expected out of sample error and why?  
+20 sample cases need to be predicted with the model for the Course Project Prediction Quiz  
+
+
+###Loading, Splicing and Cleaning Data
+
+```{r,  warning=F, message=F}
+# loading required libraries
+library(parallel);library(doParallel);library(caret); library(randomForest); library(rpart)
+```
+
+
+```{r}
+#loading data 
+training <- read.csv("pml-training.csv", header=T, na.strings = c("NA", "", "#DIV/0!"))
+testing <- read.csv("pml-testing.csv", header=T, na.strings = c("NA", "", "#DIV/0!"))
+
+# splitting 15% of the training data off for final cross validation testing
+set.seed(1234)
+intrain <- createDataPartition(training$classe, list= F, p=0.85)
+mytrain <- training[intrain,] 
+mytest <- training[-intrain,]
+cbind(dim(mytrain)[1], dim(mytest)[1]) # number of observations in mytrain/mytest
+
+# checking for NA values to remove the variables for high NA numbers
+nacolumns <- colSums(is.na(mytrain))
+quantile(nacolumns)  # shows that columns do have 0 NAs or around 16400 out of 16680
+goodcol <- names(which(nacolumns < 1000))
+mytrain <- mytrain[,goodcol]
+mytrain <- mytrain[,-c(1,2,3,4,5,6,7)] # removing the frist 7 columns, those are no real predictors
+dim(mytrain) # 53 possible features are left now
+```
+
+After removing variables with a very high NA number and also the first 7 columns as those are not real predictors, there are 53 possible features left to fit a model on.
+
+###Model Building
+
+For classification prediction model building "Classification Tree"" or "Random Forest" are the most common approaches to be used. I'm building both models to see which one gives a better accuracy.  
+
+#### a) Classification Tree Model
+```{r, warning=F, message=F}
+set.seed(1234)
+#for parallel processing 
+cluster <- makeCluster(detectCores() - 1) 
+registerDoParallel(cluster)
+
+fControl <- trainControl(method = "cv", # cross validation 
+                           number = 10, # 10 k-fold
+                           allowParallel = TRUE)
+
+
+# train with rpart
+fitTree <-  train(classe ~ ., method="rpart",data=mytrain, trControl = fControl)
+stopCluster(cluster)
+fitTree # show results
+```
+
+The classification model build has just around 50% accuracy. There is no need to do any further validation on this model and go ahead with a different approach.
+
+#### b) Random Forest Model
+```{r, cache=T ,warning=F, message=F}
+set.seed(1234)
+# for parallel processing 
+cluster <- makeCluster(detectCores() - 1) 
+registerDoParallel(cluster)
+
+fControl <- trainControl(method = "cv", # cross validation 
+                           number = 10, # 10 k-fold
+                           allowParallel = TRUE)
+
+
+# train with rf
+fitRf <- train(classe ~ ., method="rf",data=mytrain, trControl = fControl)
+stopCluster(cluster)
+fitRf
+fitRf$finalModel
+```
+
+The results are much better for the Random Forest Model with an accuracy of 99.40%. 
+The Out of Bag error is just 0.55%
+
+###Cross Validation and "Out of Sample Error"
+
+The Caret Train packages includes already cross validation through resampling on the given train data. In the above models trainControl has been defined with method = "cv" and number of k-fold with 10.  
+
+To get the expected "Out of Sample Error", we need to run prediction for the model with new data. We are using the held 15% in mytest data set to cross validate the random forest model fitRf and get the "Out of Sample Error" as well.
+
+```{r}
+myprediction <- predict(fitRf, newdata=mytest)
+confusionMatrix(myprediction, mytest$classe)
+```
+
+The accuracy for the prediction is 99.52%. The "Out of Sample Error" is 0.48%.
+
+###Predicting classes for the Course Project Prediction Quiz
+
+I'm now predicting the classes for the testing data set with the fitted model fitRf.
+
+```{r}
+prediction <- predict(fitRf, newdata=testing)
+prediction
+```
+
